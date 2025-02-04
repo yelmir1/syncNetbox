@@ -1,6 +1,9 @@
 import requests
 from pyzabbix import ZabbixAPI
 from dotenv import load_dotenv
+import json
+import os
+from dotenv import load_dotenv
 # Connexion à NetBox
 NETBOX_API_URL = "http://51.254.199.129:8080/api/"
 TOKEN = "6f85af1afefd1b8d71bf33b274fd68d08f76db75"  # Token NetBox
