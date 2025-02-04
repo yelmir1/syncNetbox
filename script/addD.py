@@ -1,74 +1,65 @@
 import requests
 from pyzabbix import ZabbixAPI
+from extras.scripts import Script, StringVar
 
-# Connexion à NetBox
 NETBOX_API_URL = "http://51.254.199.129:8080/api/"
-TOKEN = "6f85af1afefd1b8d71bf33b274fd68d08f76db75"  # Token NetBox
-headers = {"Authorization": f"Token {TOKEN}"}
+TOKEN = "6f85af1afefd1b8d71bf33b274fd68d08f76db75"
+ZABBIX_URL = "https://monitoring.myitcrew.io/zabbix"
+API_TOKEN = "208347aabf1d810a2b029200dd366371f999009eb3d25cefbf5fe3bce932115b"
 
-# Connexion à Zabbix
-zabbix_url = "https://monitoring.myitcrew.io/zabbix"
-zabbix_user = "Admin"
-zabbix_password = "mhFrjsaP6k7cmG43bUVF"
-API_TOKEN="208347aabf1d810a2b029200dd366371f999009eb3d25cefbf5fe3bce932115b"
-zapi = ZabbixAPI(zabbix_url)
-#zapi.login(zabbix_user, zabbix_password)
-zapi.session.headers.update({"Authorization": f"Bearer {API_TOKEN}"})
-print("Connexion réussie à Zabbix API")
+class AddDeviceToZabbix(Script):
+    class Meta:
+        name = "Add Device to Zabbix"
+        description = "Ajoute un device NetBox à Zabbix automatiquement"
 
-# Fonction pour récupérer l'ID d'un groupe par nom
-def get_group_id(group_name):
-    group = zapi.hostgroup.get(filter={"name": group_name}, output=["groupid"])
-    if group:
-        return group[0]['groupid']
-    else:
-        raise ValueError(f"Groupe '{group_name}' non trouvé.")
+    device_name = StringVar(description="Nom du device")
+    ip_address = StringVar(description="Adresse IP du device")
 
-# Fonction pour récupérer l'ID d'un template par nom
-def get_template_id(template_name):
-    template = zapi.template.get(filter={"host": template_name}, output=["templateid"])
-    if template:
-        return template[0]['templateid']
-    else:
-        raise ValueError(f"Template '{template_name}' non trouvé.")
-# Fonction pour vérifier l'existance des serveurs sur zabbix
-def host_exists(hostname):
-    hosts = zapi.host.get(filter={"host": hostname}, output=["hostid"])
-    return len(hosts) > 0
-# Obtenir les IDs du groupe et du template
-group_name = "Linux servers"
-template_name = "Linux by Zabbix agent"
+    def run(self, data, commit):
+        headers = {"Authorization": f"Token {TOKEN}"}
+        zapi = ZabbixAPI(ZABBIX_URL)
+        zapi.session.headers.update({"Authorization": f"Bearer {API_TOKEN}"})
 
-group_id = get_group_id(group_name)
-template_id = get_template_id(template_name)
-#print(group_id)
-#print(template_id)
-# Fonction pour ajouter un hôte dans Zabbix
-def add_host_to_zabbix(hostname, ip_address, group_id, template_id):
-    if host_exists(hostname):
-        print(f"Hôte '{hostname}' existe déjà dans Zabbix. Aucun ajout nécessaire.")
-        return
-    try:
-        zapi.host.create(
-            host=hostname,
-            interfaces=[{
-                "type": 1, "main": 1, "useip": 1,
-                "ip": ip_address, "dns": "", "port": "10050"
-            }],
-            groups=[{"groupid": group_id}],
-            templates=[{"templateid": template_id}]
-        )
-        print(f"Hôte '{hostname}' ajouté avec succès.")
-    except Exception as e:
-        print(f"Erreur lors de l'ajout de l'hôte '{hostname}': {e}")
-# Récupérer les périphériques depuis NetBox
-response = requests.get(f"{NETBOX_API_URL}dcim/devices/", headers=headers)
-if response.status_code == 200:
-    devices = response.json()
-    for device in devices['results']:
-        hostname = device.get('name', 'Nom non défini')
-        ip_address = device.get('primary_ip4', {}).get('address', '').split('/')[0]
-        if hostname and ip_address:
-            add_host_to_zabbix(hostname, ip_address, group_id, template_id)
-else:
-    print(f"Erreur lors de l'accès à NetBox : {response.status_code}")
+        self.log_success("Connexion réussie à Zabbix API")
+
+        hostname = data['device_name']
+        ip_address = data['ip_address']
+
+        if not hostname or not ip_address:
+            self.log_failure("Nom d'hôte ou adresse IP manquant.")
+            return
+
+        # Vérifier si l'hôte existe
+        hosts = zapi.host.get(filter={"host": hostname}, output=["hostid"])
+        if hosts:
+            self.log_info(f"L'hôte '{hostname}' existe déjà dans Zabbix.")
+            return
+
+        # Récupérer les IDs du groupe et du template
+        group_name = "Linux servers"
+        template_name = "Linux by Zabbix agent"
+
+        group = zapi.hostgroup.get(filter={"name": group_name}, output=["groupid"])
+        template = zapi.template.get(filter={"host": template_name}, output=["templateid"])
+
+        if not group or not template:
+            self.log_failure("Groupe ou Template non trouvé dans Zabbix.")
+            return
+        
+        group_id = group[0]["groupid"]
+        template_id = template[0]["templateid"]
+
+        # Ajouter l'hôte à Zabbix
+        try:
+            zapi.host.create(
+                host=hostname,
+                interfaces=[{
+                    "type": 1, "main": 1, "useip": 1,
+                    "ip": ip_address, "dns": "", "port": "10050"
+                }],
+                groups=[{"groupid": group_id}],
+                templates=[{"templateid": template_id}]
+            )
+            self.log_success(f"Hôte '{hostname}' ajouté avec succès à Zabbix.")
+        except Exception as e:
+            self.log_failure(f"Erreur lors de l'ajout de l'hôte '{hostname}': {e}")
