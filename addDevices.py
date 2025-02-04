@@ -1,10 +1,19 @@
 import requests
 from pyzabbix import ZabbixAPI
-
+from dotenv import load_dotenv
 # Connexion à NetBox
 NETBOX_API_URL = "http://51.254.199.129:8080/api/"
 TOKEN = "6f85af1afefd1b8d71bf33b274fd68d08f76db75"  # Token NetBox
 headers = {"Authorization": f"Token {TOKEN}"}
+
+
+# Load the .env file so the API Token can be read by the script
+load_dotenv()
+
+# Set the 'token' variable to the value of 'api_token' from the .env file
+# Rename file .env.example to .env and add your own API token
+# Remember to add .env to your .gitignore file to avoid uploading the token to your Git repo
+token = os.getenv('api_token') 
 
 # Connexion à Zabbix
 zabbix_url = "https://monitoring.myitcrew.io/zabbix"
